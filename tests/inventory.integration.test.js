@@ -7,7 +7,10 @@ const app = createApp();
 beforeEach(async () => {
   await prisma.auditLog.deleteMany();
   await prisma.refreshToken.deleteMany();
+  await prisma.emailToken.deleteMany();
   await prisma.inventoryTransfer.deleteMany();
+  await prisma.inventoryReservation.deleteMany();
+  await prisma.salesRecord.deleteMany();
   await prisma.inventoryItem.deleteMany();
   await prisma.product.deleteMany();
   await prisma.location.deleteMany();
@@ -21,7 +24,7 @@ afterAll(async () => {
 
 describe("LeanStock inventory transaction", () => {
   test("transfers stock atomically and prevents overselling", async () => {
-    const auth = await request(app)
+    await request(app)
       .post("/auth/register")
       .send({
         tenantName: "Lean Mart",
@@ -31,7 +34,17 @@ describe("LeanStock inventory transaction", () => {
       })
       .expect(201);
 
-    const token = auth.body.accessToken;
+    const user = await prisma.user.findUnique({ where: { email: "merchant@example.com" } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date() },
+    });
+    const login = await request(app)
+      .post("/auth/login")
+      .send({ email: "merchant@example.com", password: "StrongPass1!" })
+      .expect(200);
+
+    const token = login.body.accessToken;
 
     const source = await request(app)
       .post("/locations")

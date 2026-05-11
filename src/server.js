@@ -2,10 +2,13 @@ const { env } = require("./config/env");
 const { createApp } = require("./app");
 const { connectRedis, disconnectRedis } = require("./config/redis");
 const { disconnectPrisma } = require("./config/database");
+const { closeQueues } = require("./config/queues");
 const { startDeadStockWorker, stopDeadStockWorker } = require("./services/deadStockWorker.service");
+const { startWorkers, stopWorkers } = require("./services/worker.service");
 
 async function main() {
   await connectRedis();
+  startWorkers();
   const app = createApp();
   startDeadStockWorker();
   const server = app.listen(env.PORT, () => {
@@ -16,7 +19,7 @@ async function main() {
   async function shutdown() {
     stopDeadStockWorker();
     server.close(async () => {
-      await Promise.all([disconnectRedis(), disconnectPrisma()]);
+      await Promise.all([stopWorkers(), closeQueues(), disconnectRedis(), disconnectPrisma()]);
       process.exit(0);
     });
   }

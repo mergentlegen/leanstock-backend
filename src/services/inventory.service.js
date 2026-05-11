@@ -3,6 +3,7 @@ const { prisma } = require("../config/database");
 const { badRequest, conflict, notFound } = require("../utils/errors");
 const { writeAudit } = require("./audit.service");
 const { withRedisLock } = require("./lock.service");
+const { queueEmail } = require("./email.service");
 
 async function createLocation(user, input) {
   const location = await prisma.location.create({
@@ -187,9 +188,265 @@ async function transferInventory(user, input) {
         metadata: input,
       });
 
+      await queueEmail({
+        to: user.email,
+        subject: "Inventory transfer completed",
+        text: `Transfer completed: ${input.quantity} units moved between locations.`,
+        html: `<p>Transfer completed: <b>${input.quantity}</b> units moved between locations.</p>`,
+        eventType: "INVENTORY_TRANSFERRED",
+        metadata: { tenantId: user.tenantId, transferId: transfer.id },
+      });
+
       return { transfer, destination };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   });
+}
+
+async function reserveInventory(user, input) {
+  const lockKey = `lock:reservation:${user.tenantId}:${input.productId}:${input.locationId}`;
+  return withRedisLock([lockKey], async () => {
+    return prisma.$transaction(async (tx) => {
+      await ensureTenantProductAndLocation(user.tenantId, input.productId, input.locationId, tx);
+      const item = await tx.inventoryItem.findFirst({
+        where: {
+          tenantId: user.tenantId,
+          productId: input.productId,
+          locationId: input.locationId,
+        },
+      });
+
+      if (!item || item.quantity - item.reservedQuantity < input.quantity) {
+        throw conflict("Not enough available inventory to reserve");
+      }
+
+      await tx.inventoryItem.update({
+        where: { id: item.id },
+        data: {
+          reservedQuantity: { increment: input.quantity },
+          version: { increment: 1 },
+        },
+      });
+
+      const reservation = await tx.inventoryReservation.create({
+        data: {
+          tenantId: user.tenantId,
+          productId: input.productId,
+          locationId: input.locationId,
+          quantity: input.quantity,
+          token: `rsv_${cryptoRandomToken()}`,
+          expiresAt: new Date(Date.now() + input.ttlSeconds * 1000),
+          createdByUserId: user.id,
+        },
+      });
+
+      await writeAudit({
+        tx,
+        tenantId: user.tenantId,
+        actorUserId: user.id,
+        action: "INVENTORY_RESERVED",
+        entityType: "InventoryReservation",
+        entityId: reservation.id,
+        metadata: { quantity: input.quantity },
+      });
+
+      await queueEmail({
+        to: user.email,
+        subject: "Inventory reservation created",
+        text: `Reservation ${reservation.token} created for ${reservation.quantity} units.`,
+        html: `<p>Reservation <b>${reservation.token}</b> created for ${reservation.quantity} units.</p>`,
+        eventType: "INVENTORY_RESERVED",
+        metadata: { tenantId: user.tenantId, reservationId: reservation.id },
+      });
+
+      return reservation;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
+}
+
+async function commitReservation(user, token) {
+  return changeReservationStatus(user, token, "COMMITTED");
+}
+
+async function cancelReservation(user, token) {
+  return changeReservationStatus(user, token, "CANCELLED");
+}
+
+async function changeReservationStatus(user, token, nextStatus) {
+  const reservation = await prisma.inventoryReservation.findFirst({
+    where: {
+      tenantId: user.tenantId,
+      token,
+      status: "RESERVED",
+    },
+  });
+
+  if (!reservation) {
+    throw notFound("Active reservation not found");
+  }
+  if (reservation.expiresAt <= new Date()) {
+    await prisma.inventoryReservation.update({
+      where: { id: reservation.id },
+      data: { status: "EXPIRED" },
+    });
+    throw conflict("Reservation has expired");
+  }
+
+  const lockKey = `lock:reservation:${user.tenantId}:${reservation.productId}:${reservation.locationId}`;
+  return withRedisLock([lockKey], async () => {
+    return prisma.$transaction(async (tx) => {
+      const item = await tx.inventoryItem.findFirst({
+        where: {
+          tenantId: user.tenantId,
+          productId: reservation.productId,
+          locationId: reservation.locationId,
+        },
+      });
+      if (!item || item.reservedQuantity < reservation.quantity) {
+        throw conflict("Reservation state is inconsistent");
+      }
+
+      await tx.inventoryItem.update({
+        where: { id: item.id },
+        data: nextStatus === "COMMITTED"
+          ? {
+            quantity: { decrement: reservation.quantity },
+            reservedQuantity: { decrement: reservation.quantity },
+            version: { increment: 1 },
+          }
+          : {
+            reservedQuantity: { decrement: reservation.quantity },
+            version: { increment: 1 },
+          },
+      });
+
+      const updated = await tx.inventoryReservation.update({
+        where: { id: reservation.id },
+        data: { status: nextStatus },
+      });
+
+      await writeAudit({
+        tx,
+        tenantId: user.tenantId,
+        actorUserId: user.id,
+        action: nextStatus === "COMMITTED" ? "INVENTORY_RESERVATION_COMMITTED" : "INVENTORY_RESERVATION_CANCELLED",
+        entityType: "InventoryReservation",
+        entityId: reservation.id,
+        metadata: { token },
+      });
+
+      return updated;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
+}
+
+async function recordSale(user, input) {
+  const lockKey = `lock:sale:${user.tenantId}:${input.productId}:${input.locationId}`;
+  return withRedisLock([lockKey], async () => {
+    return prisma.$transaction(async (tx) => {
+      await ensureTenantProductAndLocation(user.tenantId, input.productId, input.locationId, tx);
+      const decrement = await tx.inventoryItem.updateMany({
+        where: {
+          tenantId: user.tenantId,
+          productId: input.productId,
+          locationId: input.locationId,
+          quantity: { gte: input.quantity },
+        },
+        data: {
+          quantity: { decrement: input.quantity },
+          version: { increment: 1 },
+        },
+      });
+      if (decrement.count !== 1) {
+        throw conflict("Not enough stock to record sale");
+      }
+
+      const sale = await tx.salesRecord.create({
+        data: {
+          tenantId: user.tenantId,
+          productId: input.productId,
+          locationId: input.locationId,
+          quantity: input.quantity,
+          unitPrice: new Prisma.Decimal(input.unitPrice),
+          soldAt: input.soldAt,
+          createdByUserId: user.id,
+        },
+      });
+
+      await writeAudit({
+        tx,
+        tenantId: user.tenantId,
+        actorUserId: user.id,
+        action: "SALE_RECORDED",
+        entityType: "SalesRecord",
+        entityId: sale.id,
+        metadata: { quantity: input.quantity },
+      });
+
+      return sale;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
+}
+
+async function forecastReorder(user, { productId, locationId, days = 30, leadTimeDays = 7, safetyStock = 5 }) {
+  await ensureTenantProductAndLocation(user.tenantId, productId, locationId);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const sales = await prisma.salesRecord.findMany({
+    where: {
+      tenantId: user.tenantId,
+      productId,
+      locationId,
+      soldAt: { gte: since },
+    },
+  });
+  const item = await prisma.inventoryItem.findFirst({
+    where: {
+      tenantId: user.tenantId,
+      productId,
+      locationId,
+    },
+  });
+
+  const totalSold = sales.reduce((sum, sale) => sum + sale.quantity, 0);
+  const averageDailyDemand = totalSold / days;
+  const reorderPoint = Math.ceil(averageDailyDemand * leadTimeDays + safetyStock);
+  const availableQuantity = item ? item.quantity - item.reservedQuantity : 0;
+  const recommendedOrderQuantity = Math.max(reorderPoint - availableQuantity, 0);
+
+  const forecast = {
+    productId,
+    locationId,
+    windowDays: days,
+    leadTimeDays,
+    safetyStock,
+    totalSold,
+    averageDailyDemand: roundMoney(averageDailyDemand),
+    availableQuantity,
+    reorderPoint,
+    shouldReorder: availableQuantity <= reorderPoint,
+    recommendedOrderQuantity,
+  };
+
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorUserId: user.id,
+    action: "REORDER_FORECAST_VIEWED",
+    entityType: "Product",
+    entityId: productId,
+    metadata: forecast,
+  });
+
+  if (forecast.shouldReorder) {
+    await queueEmail({
+      to: user.email,
+      subject: "LeanStock reorder alert",
+      text: `Reorder suggested for product ${productId}. Recommended quantity: ${recommendedOrderQuantity}.`,
+      html: `<p>Reorder suggested.</p><p>Recommended quantity: <b>${recommendedOrderQuantity}</b></p>`,
+      eventType: "REORDER_ALERT",
+      metadata: { tenantId: user.tenantId, productId, locationId },
+    });
+  }
+
+  return forecast;
 }
 
 async function applyDeadStockDecay(user, now = new Date()) {
@@ -329,12 +586,21 @@ function roundMoney(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function cryptoRandomToken() {
+  return require("crypto").randomBytes(18).toString("base64url");
+}
+
 module.exports = {
   createLocation,
   createProduct,
   listProducts,
   setInventoryStock,
   transferInventory,
+  reserveInventory,
+  commitReservation,
+  cancelReservation,
+  recordSale,
+  forecastReorder,
   applyDeadStockDecay,
   applyDeadStockDecayForTenant,
   calculateDeadStockPrice,

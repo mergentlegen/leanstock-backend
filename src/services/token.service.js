@@ -50,6 +50,20 @@ async function revokeRefreshToken(rawToken, tx = prisma) {
   });
 }
 
+async function rotateRefreshToken(rawToken, tx = prisma) {
+  const existing = await findValidRefreshToken(rawToken, tx);
+  if (!existing) {
+    return null;
+  }
+
+  await tx.refreshToken.update({
+    where: { id: existing.id },
+    data: { revokedAt: new Date() },
+  });
+  const next = await issueRefreshToken(existing.user.id, tx);
+  return { existing, next };
+}
+
 async function findValidRefreshToken(rawToken, tx = prisma) {
   const tokenHash = hashRefreshToken(rawToken);
   return tx.refreshToken.findFirst({
@@ -70,5 +84,6 @@ module.exports = {
   verifyAccessToken,
   revokeRefreshToken,
   findValidRefreshToken,
+  rotateRefreshToken,
   hashRefreshToken,
 };

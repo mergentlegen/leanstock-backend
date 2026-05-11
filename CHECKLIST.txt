@@ -9,6 +9,12 @@
 [x] Inventory transfer prevents overselling with Redis Redlock + serializable Prisma transaction
 [x] Dead-stock decay uses configurable decay settings
 [x] Dead-stock decay has a background worker using node-cron
+[x] Email verification and password reset are implemented
+[x] Email sending is queued asynchronously through BullMQ
+[x] Queue visibility is available through /admin/jobs
+[x] Redis reservation workflow is implemented
+[x] Reorder forecasting is implemented with moving-average demand
+[x] Minimal frontend demo is available at /
 [x] Cursor pagination is implemented on GET /products
 [x] Swagger UI is served at /docs from openapi.yaml
 [x] CI runs lint, tests, and Docker build

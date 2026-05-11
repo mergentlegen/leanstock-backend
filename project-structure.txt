@@ -1,53 +1,44 @@
 leanstock-backend/
 ├── src/                         # Express application source code
-│   ├── app.js                   # App setup, middleware, routes, Swagger UI
-│   ├── server.js                # HTTP startup and graceful shutdown
-│   ├── config/                  # Environment, Prisma, and Redis clients
+│   ├── app.js                   # Middleware, static demo, routes, Swagger UI
+│   ├── server.js                # HTTP startup, workers, graceful shutdown
+│   ├── config/                  # Environment, Prisma, Redis, BullMQ queues
 │   │   ├── database.js          # PrismaClient singleton
 │   │   ├── env.js               # Zod environment validation
+│   │   ├── queues.js            # BullMQ email/maintenance queues and visibility
 │   │   └── redis.js             # Redis connection lifecycle
 │   ├── controllers/             # HTTP handlers
-│   │   ├── adminController.js   # Admin-only audit log endpoint
-│   │   ├── authController.js    # Register/login/refresh/logout/me
-│   │   └── inventoryController.js # LeanStock endpoint handlers
-│   ├── middleware/              # Cross-cutting Express middleware
-│   │   ├── auth.js              # JWT verification and RBAC
-│   │   ├── errorHandler.js      # Standard JSON error envelope
-│   │   ├── rateLimit.js         # Redis token bucket for auth endpoints
-│   │   └── validate.js          # Zod request validation
-│   ├── routes/                  # Route definitions grouped by resource
-│   │   ├── admin.routes.js      # /admin endpoints
-│   │   ├── auth.routes.js       # /auth endpoints
-│   │   └── inventory.routes.js  # Locations, products, inventory, jobs
+│   │   ├── adminController.js   # Audit logs and queue visibility
+│   │   ├── authController.js    # Auth, verification, password reset
+│   │   └── inventoryController.js # LeanStock workflow handlers
+│   ├── middleware/              # Auth, RBAC, validation, errors, rate limit
+│   ├── routes/                  # Auth, admin, inventory routes
 │   ├── schemas/                 # Zod request schemas
-│   │   ├── auth.schema.js       # Auth validation rules
-│   │   └── inventory.schema.js  # LeanStock validation rules
-│   ├── services/                # Business logic and integrations
-│   │   ├── audit.service.js     # Append-only audit log writer
-│   │   ├── auth.service.js      # Auth workflows
-│   │   ├── deadStockWorker.service.js # Cron worker for automatic price decay
-│   │   ├── inventory.service.js # Tenant catalog, transfer, decay logic
-│   │   ├── lock.service.js      # Redis Redlock for transfer concurrency
-│   │   └── token.service.js     # JWT and refresh token management
+│   ├── services/                # Business logic
+│   │   ├── audit.service.js
+│   │   ├── auth.service.js
+│   │   ├── deadStockWorker.service.js
+│   │   ├── email.service.js
+│   │   ├── emailToken.service.js
+│   │   ├── inventory.service.js
+│   │   ├── lock.service.js
+│   │   ├── token.service.js
+│   │   └── worker.service.js
 │   └── utils/                   # Shared helpers
-│       ├── asyncHandler.js      # Async route wrapper
-│       ├── errors.js            # ApiError helpers
-│       └── slug.js              # Tenant slug helper
-├── prisma/                      # Prisma ORM source of truth
+├── prisma/                      # Prisma source of truth
 │   ├── seed.js                  # Demo ADMIN and STAFF users
 │   ├── schema.prisma            # Models, enums, indexes, relations
-│   └── migrations/              # Baseline PostgreSQL migration
-├── postman/                     # Defense-ready Postman collection
-│   └── LeanStock_API.postman_collection.json # Auth, admin, and business flow
+│   └── migrations/              # Migration history
+├── postman/                     # Defense-ready Postman collections
+│   ├── LeanStock_API.postman_collection.json
+│   └── LeanStock_Final_API.postman_collection.json
+├── public/                      # Minimal frontend demo
+│   └── index.html
 ├── tests/                       # Jest unit and integration tests
-│   ├── auth.integration.test.js # Auth flow and RBAC tests
-│   ├── deadStock.test.js        # Pure dead-stock formula tests
-│   ├── inventory.integration.test.js # Atomic transfer test
-│   └── setup-env.js             # Test environment defaults
-├── .github/workflows/ci.yml     # Lint, test, Docker build pipeline
-├── .env.example                 # Safe environment template
-├── Dockerfile                   # Production API image
+├── .github/workflows/ci.yml     # CI pipeline
+├── .env.example                 # Environment template
+├── Dockerfile                   # API image
 ├── docker-compose.yml           # Local API + PostgreSQL + Redis
-├── openapi.yaml                 # OpenAPI 3 API contract
+├── openapi.yaml                 # OpenAPI 3 contract
 ├── package.json                 # Node dependencies and scripts
 └── README.md                    # Setup and architecture notes

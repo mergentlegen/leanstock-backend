@@ -189,6 +189,121 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "500": { $ref: "#/components/responses/ServerError" }
+  /auth/verify-email:
+    get:
+      tags: [Auth]
+      summary: Verify email from a clicked email link
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Email verified
+          content:
+            application/json:
+              schema: { type: object }
+              example:
+                verified: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [Auth]
+      summary: Verify email using a token body
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+            example:
+              token: verification-token-from-email
+      responses:
+        "200":
+          description: Email verified
+          content:
+            application/json:
+              schema: { type: object }
+              example:
+                verified: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /auth/password-reset/request:
+    post:
+      tags: [Auth]
+      summary: Request an async password reset email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+            example:
+              email: owner@example.com
+      responses:
+        "200":
+          description: Reset accepted
+          content:
+            application/json:
+              schema: { type: object }
+              example:
+                accepted: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /auth/password-reset/confirm:
+    post:
+      tags: [Auth]
+      summary: Complete password reset using emailed token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string }
+                newPassword: { type: string, minLength: 10 }
+            example:
+              token: reset-token-from-email
+              newPassword: NewStrongPass1!
+      responses:
+        "200":
+          description: Password reset completed
+          content:
+            application/json:
+              schema: { type: object }
+              example:
+                reset: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
   /locations:
     post:
       tags: [Locations]
@@ -385,6 +500,161 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "500": { $ref: "#/components/responses/ServerError" }
+  /inventory/reservations:
+    post:
+      tags: [Inventory]
+      summary: Reserve stock during checkout using Redis-backed locking
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, locationId, quantity]
+              properties:
+                productId: { type: string, format: uuid }
+                locationId: { type: string, format: uuid }
+                quantity: { type: integer, minimum: 1 }
+                ttlSeconds: { type: integer, default: 900 }
+            example:
+              productId: 46ae7c91-7c29-44df-8f1b-ef24f77763db
+              locationId: 99df1317-b0b8-4512-a7d7-17af8837375c
+              quantity: 3
+              ttlSeconds: 900
+      responses:
+        "201":
+          description: Reservation created
+          content:
+            application/json:
+              schema: { type: object }
+              example:
+                reservation:
+                  token: rsv_demo
+                  status: RESERVED
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /inventory/reservations/{token}/commit:
+    post:
+      tags: [Inventory]
+      summary: Commit a reservation and decrement real stock
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Reservation committed }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /inventory/reservations/{token}/cancel:
+    post:
+      tags: [Inventory]
+      summary: Cancel a reservation and release reserved stock
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Reservation cancelled }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /sales:
+    post:
+      tags: [Inventory]
+      summary: Record a sale for forecast history and decrement stock
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, locationId, quantity, unitPrice]
+              properties:
+                productId: { type: string, format: uuid }
+                locationId: { type: string, format: uuid }
+                quantity: { type: integer, minimum: 1 }
+                unitPrice: { type: number }
+            example:
+              productId: 46ae7c91-7c29-44df-8f1b-ef24f77763db
+              locationId: 99df1317-b0b8-4512-a7d7-17af8837375c
+              quantity: 2
+              unitPrice: 500
+      responses:
+        "201": { description: Sale recorded }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /products/{productId}/forecast:
+    get:
+      tags: [Products]
+      summary: Calculate reorder forecast using moving average sales
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: productId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: locationId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: days
+          schema: { type: integer, default: 30 }
+        - in: query
+          name: leadTimeDays
+          schema: { type: integer, default: 7 }
+        - in: query
+          name: safetyStock
+          schema: { type: integer, default: 5 }
+      responses:
+        "200":
+          description: Forecast result
+          content:
+            application/json:
+              schema: { type: object }
+              example:
+                forecast:
+                  averageDailyDemand: 1.2
+                  reorderPoint: 14
+                  shouldReorder: true
+                  recommendedOrderQuantity: 8
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
   /jobs/dead-stock-decay:
     post:
       tags: [Jobs]
@@ -445,6 +715,34 @@ paths:
                     type: array
                     items:
                       type: object
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /admin/jobs:
+    get:
+      tags: [Admin]
+      summary: View BullMQ email and maintenance job status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Queue status
+          content:
+            application/json:
+              schema: { type: object }
+              example:
+                email:
+                  counts:
+                    completed: 3
+                    failed: 0
+                maintenance:
+                  counts:
+                    waiting: 0
+                    failed: 0
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

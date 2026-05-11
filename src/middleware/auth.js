@@ -23,11 +23,19 @@ async function requireAuth(req, _res, next) {
         email: true,
         username: true,
         role: true,
+        emailVerifiedAt: true,
+        isActive: true,
       },
     });
 
     if (!user) {
       throw unauthorized("User no longer exists");
+    }
+    if (!user.isActive) {
+      throw forbidden("User account is disabled");
+    }
+    if (!user.emailVerifiedAt) {
+      throw forbidden("Email verification is required");
     }
 
     req.user = user;

@@ -32,9 +32,36 @@ const refreshSchema = z.object({
 
 const logoutSchema = refreshSchema;
 
+const verifyEmailSchema = z.object({
+  body: z.object({
+    token: z.string().min(32),
+  }).optional(),
+  query: z.object({
+    token: z.string().min(32).optional(),
+  }).optional(),
+}).refine((value) => value.body?.token || value.query?.token, {
+  message: "Verification token is required",
+});
+
+const passwordResetRequestSchema = z.object({
+  body: z.object({
+    email: z.string().email().toLowerCase(),
+  }),
+});
+
+const passwordResetConfirmSchema = z.object({
+  body: z.object({
+    token: z.string().min(32),
+    newPassword: strongPassword,
+  }),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
   refreshSchema,
   logoutSchema,
+  verifyEmailSchema,
+  passwordResetRequestSchema,
+  passwordResetConfirmSchema,
 };

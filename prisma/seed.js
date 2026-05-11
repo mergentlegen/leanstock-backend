@@ -37,6 +37,8 @@ async function main() {
         username: user.username,
         passwordHash,
         role: user.role,
+        emailVerifiedAt: new Date(),
+        isActive: true,
       },
       create: {
         tenantId: tenant.id,
@@ -44,6 +46,8 @@ async function main() {
         username: user.username,
         passwordHash,
         role: user.role,
+        emailVerifiedAt: new Date(),
+        isActive: true,
       },
     });
 

@@ -7,7 +7,10 @@ const app = createApp();
 beforeEach(async () => {
   await prisma.auditLog.deleteMany();
   await prisma.refreshToken.deleteMany();
+  await prisma.emailToken.deleteMany();
   await prisma.inventoryTransfer.deleteMany();
+  await prisma.inventoryReservation.deleteMany();
+  await prisma.salesRecord.deleteMany();
   await prisma.inventoryItem.deleteMany();
   await prisma.product.deleteMany();
   await prisma.location.deleteMany();
@@ -31,8 +34,16 @@ describe("authentication and RBAC", () => {
       })
       .expect(201);
 
-    expect(registration.body.accessToken).toBeTruthy();
-    expect(registration.body.refreshToken).toBeTruthy();
+    expect(registration.body.verificationRequired).toBe(true);
+
+    const user = await prisma.user.findUnique({ where: { email: "owner@example.com" } });
+    const token = await prisma.emailToken.findFirst({
+      where: { userId: user.id, purpose: "EMAIL_VERIFICATION", consumedAt: null },
+    });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date() },
+    });
 
     await request(app).get("/auth/me").expect(401);
 
@@ -50,6 +61,7 @@ describe("authentication and RBAC", () => {
       .post("/auth/refresh")
       .send({ refreshToken: login.body.refreshToken })
       .expect(200);
+    expect(token).toBeTruthy();
 
     await request(app)
       .post("/auth/logout")
@@ -64,7 +76,7 @@ describe("authentication and RBAC", () => {
   });
 
   test("returns 403 when authenticated role lacks permission", async () => {
-    const staff = await request(app)
+    await request(app)
       .post("/auth/register")
       .send({
         tenantName: "Staff Tenant",
@@ -74,10 +86,19 @@ describe("authentication and RBAC", () => {
         role: "STAFF",
       })
       .expect(201);
+    const user = await prisma.user.findUnique({ where: { email: "staff@example.com" } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date() },
+    });
+    const login = await request(app)
+      .post("/auth/login")
+      .send({ email: "staff@example.com", password: "StrongPass1!" })
+      .expect(200);
 
     await request(app)
       .post("/locations")
-      .set("Authorization", `Bearer ${staff.body.accessToken}`)
+      .set("Authorization", `Bearer ${login.body.accessToken}`)
       .send({ name: "Main Store", code: "MAIN" })
       .expect(403);
   });

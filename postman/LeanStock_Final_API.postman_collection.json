@@ -1,0 +1,232 @@
+{
+  "info": {
+    "name": "LeanStock Final API",
+    "_postman_id": "f8f5cf69-2f43-4e4e-9d2b-leanstockfinal",
+    "description": "Final pre-defense collection. Run Health, Register, copy verification token from email/log into verificationToken, Verify Email, Login, then business workflows.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "email", "value": "final_owner@example.com" },
+    { "key": "username", "value": "final_owner" },
+    { "key": "password", "value": "StrongPass1!" },
+    { "key": "newPassword", "value": "NewStrongPass1!" },
+    { "key": "verificationToken", "value": "paste-token-from-email-or-api-log" },
+    { "key": "resetToken", "value": "paste-reset-token-from-email-or-api-log" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "locationAId", "value": "" },
+    { "key": "locationBId", "value": "" },
+    { "key": "productId", "value": "" },
+    { "key": "reservationToken", "value": "" },
+    { "key": "adminEmail", "value": "admin@leanstock.local" },
+    { "key": "adminPassword", "value": "AdminPass1!" },
+    { "key": "adminAccessToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+    },
+    {
+      "name": "02 Register - sends verification email",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": { "type": "text/javascript", "exec": [
+            "const stamp = Date.now();",
+            "pm.collectionVariables.set('email', `final_owner_${stamp}@example.com`);",
+            "pm.collectionVariables.set('username', `final_owner_${stamp}`);"
+          ] }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"tenantName\": \"Final Demo Market\",\n  \"email\": \"{{email}}\",\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}" },
+        "url": "{{baseUrl}}/auth/register"
+      }
+    },
+    {
+      "name": "03 Verify Email - paste token first",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}" },
+        "url": "{{baseUrl}}/auth/verify-email"
+      }
+    },
+    {
+      "name": "04 Login",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "const json = pm.response.json();",
+        "pm.collectionVariables.set('accessToken', json.accessToken);",
+        "pm.collectionVariables.set('refreshToken', json.refreshToken);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    {
+      "name": "05 Me",
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] }, "method": "GET", "url": "{{baseUrl}}/auth/me" }
+    },
+    {
+      "name": "06 Password Reset Request",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\"\n}" },
+        "url": "{{baseUrl}}/auth/password-reset/request"
+      }
+    },
+    {
+      "name": "07 Password Reset Confirm - paste reset token first",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}" },
+        "url": "{{baseUrl}}/auth/password-reset/confirm"
+      }
+    },
+    {
+      "name": "08 Create Location A",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('locationAId', pm.response.json().location.id);"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Shop A\",\n  \"code\": \"A{{$timestamp}}\"\n}" },
+        "url": "{{baseUrl}}/locations"
+      }
+    },
+    {
+      "name": "09 Create Location B",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('locationBId', pm.response.json().location.id);"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Shop B\",\n  \"code\": \"B{{$timestamp}}\"\n}" },
+        "url": "{{baseUrl}}/locations"
+      }
+    },
+    {
+      "name": "10 Create Product",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('productId', pm.response.json().product.id);"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"sku\": \"MILK{{$timestamp}}\",\n  \"name\": \"Milk 1L\",\n  \"supplierName\": \"Dairy Supplier KZ\",\n  \"supplierCost\": 300,\n  \"basePrice\": 500,\n  \"decayPercent\": 10,\n  \"deadStockAfterDays\": 30,\n  \"decayIntervalHours\": 72,\n  \"minPricePercent\": 50\n}" },
+        "url": "{{baseUrl}}/products"
+      }
+    },
+    {
+      "name": "11 Set Stock",
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"locationId\": \"{{locationAId}}\",\n  \"quantity\": 20,\n  \"receivedAt\": \"2026-03-01T12:00:00.000Z\"\n}" },
+        "url": "{{baseUrl}}/inventory/stock"
+      }
+    },
+    {
+      "name": "12 Transfer A to B",
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sourceLocationId\": \"{{locationAId}}\",\n  \"destinationLocationId\": \"{{locationBId}}\",\n  \"quantity\": 5\n}" },
+        "url": "{{baseUrl}}/inventory/transfers"
+      }
+    },
+    {
+      "name": "13 Reserve Stock",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('reservationToken', pm.response.json().reservation.token);"] } }],
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"locationId\": \"{{locationAId}}\",\n  \"quantity\": 3,\n  \"ttlSeconds\": 900\n}" },
+        "url": "{{baseUrl}}/inventory/reservations"
+      }
+    },
+    {
+      "name": "14 Commit Reservation",
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] }, "method": "POST", "url": "{{baseUrl}}/inventory/reservations/{{reservationToken}}/commit" }
+    },
+    {
+      "name": "15 Record Sale",
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"locationId\": \"{{locationAId}}\",\n  \"quantity\": 2,\n  \"unitPrice\": 500\n}" },
+        "url": "{{baseUrl}}/sales"
+      }
+    },
+    {
+      "name": "16 Forecast Reorder",
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] }, "method": "GET", "url": "{{baseUrl}}/products/{{productId}}/forecast?locationId={{locationAId}}&days=30&leadTimeDays=7&safetyStock=5" }
+    },
+    {
+      "name": "17 Dead Stock Decay Job",
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"now\": \"2026-04-27T12:00:00.000Z\"\n}" },
+        "url": "{{baseUrl}}/jobs/dead-stock-decay"
+      }
+    },
+    {
+      "name": "18 Admin Login",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.collectionVariables.set('adminAccessToken', pm.response.json().accessToken);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    {
+      "name": "19 Admin Audit Logs",
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] }, "method": "GET", "url": "{{baseUrl}}/admin/audit-logs?limit=20" }
+    },
+    {
+      "name": "20 Admin Queue Visibility",
+      "request": { "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] }, "method": "GET", "url": "{{baseUrl}}/admin/jobs" }
+    },
+    {
+      "name": "21 Refresh Token Rotation",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "const json = pm.response.json();",
+        "pm.collectionVariables.set('accessToken', json.accessToken);",
+        "pm.collectionVariables.set('refreshToken', json.refreshToken);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+        "url": "{{baseUrl}}/auth/refresh"
+      }
+    },
+    {
+      "name": "22 Logout",
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+        "url": "{{baseUrl}}/auth/logout"
+      }
+    }
+  ]
+}

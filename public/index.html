@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LeanStock Demo</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, Arial, sans-serif; }
+    body { margin: 0; background: #f6f7f9; color: #1c2430; }
+    header { padding: 24px 32px; background: #ffffff; border-bottom: 1px solid #d9dee7; display: flex; justify-content: space-between; align-items: center; }
+    main { padding: 24px 32px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    section { background: #ffffff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; }
+    h1 { margin: 0; font-size: 22px; }
+    h2 { margin: 0 0 12px; font-size: 16px; }
+    label { display: block; margin-top: 10px; font-size: 13px; color: #4b5563; }
+    input { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 9px 10px; border: 1px solid #c9d1dc; border-radius: 6px; }
+    button, a.button { margin-top: 12px; padding: 9px 12px; border: 0; border-radius: 6px; background: #2563eb; color: white; cursor: pointer; text-decoration: none; display: inline-block; font-size: 14px; }
+    button.secondary { background: #475569; }
+    pre { background: #111827; color: #e5e7eb; border-radius: 8px; padding: 12px; min-height: 90px; overflow: auto; grid-column: 1 / -1; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>LeanStock Backend Demo</h1>
+      <div>Auth, RBAC, inventory transfer, reservations, forecasting, queues</div>
+    </div>
+    <a class="button" href="/docs" target="_blank">Swagger UI</a>
+  </header>
+  <main>
+    <section>
+      <h2>Connection</h2>
+      <button onclick="health()">Health Check</button>
+      <button class="secondary" onclick="me()">Current User</button>
+    </section>
+    <section>
+      <h2>Login</h2>
+      <label>Email <input id="email" value="admin@leanstock.local"></label>
+      <label>Password <input id="password" type="password" value="AdminPass1!"></label>
+      <button onclick="login()">Login</button>
+    </section>
+    <section>
+      <h2>Setup Demo Data</h2>
+      <button onclick="createLocation('A')">Create Location A</button>
+      <button onclick="createLocation('B')">Create Location B</button>
+      <button onclick="createProduct()">Create Product</button>
+      <button onclick="setStock()">Set Stock 20</button>
+    </section>
+    <section>
+      <h2>Workflows</h2>
+      <button onclick="transfer()">Transfer 5 A to B</button>
+      <button onclick="reserve()">Reserve 3 at A</button>
+      <button onclick="recordSale()">Record Sale 2</button>
+      <button onclick="forecast()">Forecast</button>
+      <button onclick="jobs()">Queue Visibility</button>
+    </section>
+    <pre id="out">Ready. Run npm run seed first, then login as admin@leanstock.local / AdminPass1!.</pre>
+  </main>
+  <script>
+    const state = { accessToken: "", locationAId: "", locationBId: "", productId: "", reservationToken: "" };
+    const out = (data) => document.getElementById("out").textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+    const stamp = Date.now();
+    async function api(path, options = {}) {
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      if (state.accessToken) headers.Authorization = `Bearer ${state.accessToken}`;
+      const res = await fetch(path, { ...options, headers });
+      const data = await res.json();
+      if (!res.ok) throw data;
+      out(data);
+      return data;
+    }
+    async function health() { await api("/health"); }
+    async function login() {
+      const data = await api("/auth/login", { method: "POST", body: JSON.stringify({ email: email.value, password: password.value }) });
+      state.accessToken = data.accessToken;
+    }
+    async function me() { await api("/auth/me"); }
+    async function createLocation(which) {
+      const data = await api("/locations", { method: "POST", body: JSON.stringify({ name: `Demo Shop ${which}`, code: `DEMO_${which}_${stamp}` }) });
+      state[`location${which}Id`] = data.location.id;
+    }
+    async function createProduct() {
+      const data = await api("/products", { method: "POST", body: JSON.stringify({ sku: `DEMO_SKU_${stamp}`, name: "Demo Milk", supplierCost: 300, basePrice: 500, decayPercent: 10 }) });
+      state.productId = data.product.id;
+    }
+    async function setStock() {
+      await api("/inventory/stock", { method: "POST", body: JSON.stringify({ productId: state.productId, locationId: state.locationAId, quantity: 20, receivedAt: "2026-03-01T12:00:00.000Z" }) });
+    }
+    async function transfer() {
+      await api("/inventory/transfers", { method: "POST", body: JSON.stringify({ productId: state.productId, sourceLocationId: state.locationAId, destinationLocationId: state.locationBId, quantity: 5 }) });
+    }
+    async function reserve() {
+      const data = await api("/inventory/reservations", { method: "POST", body: JSON.stringify({ productId: state.productId, locationId: state.locationAId, quantity: 3, ttlSeconds: 900 }) });
+      state.reservationToken = data.reservation.token;
+    }
+    async function recordSale() {
+      await api("/sales", { method: "POST", body: JSON.stringify({ productId: state.productId, locationId: state.locationAId, quantity: 2, unitPrice: 500 }) });
+    }
+    async function forecast() {
+      await api(`/products/${state.productId}/forecast?locationId=${state.locationAId}&days=30&leadTimeDays=7&safetyStock=5`);
+    }
+    async function jobs() { await api("/admin/jobs"); }
+    window.addEventListener("unhandledrejection", (event) => out(event.reason));
+  </script>
+</body>
+</html>
